@@ -3,6 +3,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import bcrypt from "bcryptjs";
+import cors from "cors";
 import { createDatabaseAdapter } from "./db/db";
 
 const db = createDatabaseAdapter();
@@ -10,6 +11,18 @@ await db.init();
 
 async function startServer() {
   const app = express();
+
+  app.use(
+    cors({
+      origin: [
+        "https://opti-scan-3t4e0osnl-kishorekumar04072004-6584s-projects.vercel.app",
+        "https://opti-scan-ai.vercel.app"
+      ],
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: '50mb' }));
