@@ -1,0 +1,7 @@
+{
+  "name": "OPTISCANN",
+  "description": "AI-powered preliminary vision-screening assistant providing guided eye tests and clinical-style reports.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
