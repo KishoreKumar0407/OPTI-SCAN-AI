@@ -97,7 +97,7 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
-      fetch(`/api/profiles/${user.id}`)
+      fetch(getApiUrl(`/api/profiles/${user.id}`))
         .then(res => res.json())
         .then(data => setProfiles(data));
     }
