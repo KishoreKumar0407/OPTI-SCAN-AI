@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, Send, X, Mic, Paperclip, Volume2, User, Bot } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { chatWithOpticalAI } from '../services/geminiService';
 
 const getApiKey = () => {
   const key = process.env.GEMINI_API_KEY;
@@ -36,30 +36,17 @@ export const Chatbot = () => {
       return;
     }
 
-    const ai = new GoogleGenAI({ apiKey });
     const userMsg = { role: 'user' as const, text: text || 'Sent an image' };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
 
     try {
-      const model = ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            { text: `You are a specialized Optical and Eye Health Assistant for the OPTISCANN app. 
-                     Answer the user's question accurately. 
-                     If the user asks in a specific language (like Tamil), answer in that same language.
-                     Keep answers concise and helpful. 
-                     If an image is provided, analyze it for eye-related concerns.
-                     User Question: ${text}` },
-            ...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image.split(',')[1] } }] : [])
-          ]
-        }
-      });
-
-      const response = await model;
-      const botMsg = { role: 'bot' as const, text: response.text || 'I am sorry, I could not process that.' };
+      const responseText = await chatWithOpticalAI(
+        text || "Analyze this image for eye-related concerns",
+        image
+      );
+      const botMsg = { role: 'bot' as const, text: responseText || 'I am sorry, I could not process that.' };
       setMessages(prev => [...prev, botMsg]);
       
       // Voice output (Disabled as per user request)

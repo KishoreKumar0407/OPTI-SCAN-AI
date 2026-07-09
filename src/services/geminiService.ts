@@ -10,6 +10,61 @@ const getApiKey = () => {
   return key;
 };
 
+const executeWithRetryAndFallback = async <T>(
+  ai: any,
+  operation: (modelName: string) => Promise<T>
+): Promise<T> => {
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-3-flash-preview"];
+  const maxRetries = 2;
+  const baseDelay = 1000;
+
+  let lastError: any = null;
+
+  for (const model of models) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Attempting Gemini API call with model: ${model} (attempt ${attempt + 1}/${maxRetries + 1})`);
+        return await operation(model);
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Error using model ${model} on attempt ${attempt + 1}:`, error);
+
+        const errorMessage = error.message || "";
+        const errorString = typeof error === 'object' ? JSON.stringify(error) : String(error);
+        const isUnavailable = 
+          errorMessage.includes("503") || 
+          errorMessage.includes("UNAVAILABLE") || 
+          errorMessage.includes("high demand") || 
+          errorMessage.includes("temporary") ||
+          errorString.includes("503") ||
+          errorString.includes("UNAVAILABLE") ||
+          errorString.includes("high demand");
+          
+        const isRateLimit = 
+          errorMessage.includes("429") || 
+          errorMessage.includes("RESOURCE_EXHAUSTED") ||
+          errorString.includes("429") ||
+          errorString.includes("RESOURCE_EXHAUSTED");
+          
+        const isTransient = isUnavailable || isRateLimit || errorMessage.includes("fetch") || errorMessage.includes("NetworkError");
+
+        if (!isTransient) {
+          throw error;
+        }
+
+        if (attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`Transient error. Waiting ${delay}ms before retrying ${model}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    console.warn(`Model ${model} failed after all attempts. Trying next fallback model...`);
+  }
+
+  throw lastError || new Error("All Gemini models failed to respond.");
+};
+
 export interface ScreeningData {
   name: string;
   age: number;
@@ -26,8 +81,6 @@ export interface ScreeningData {
 export const analyzeVision = async (data: ScreeningData) => {
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
-  // Using Flash model by default to avoid quota issues and improve speed
-  const model = "gemini-3-flash-preview";
 
   const extraParts: any[] = [];
   let previousReportText = '';
@@ -132,9 +185,10 @@ export const analyzeVision = async (data: ScreeningData) => {
   }));
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
+    const response = await executeWithRetryAndFallback(ai, (currentModel) =>
+      ai.models.generateContent({
+        model: currentModel,
+        contents: {
         parts: [
           { text: prompt },
           ...extraParts,
@@ -270,7 +324,8 @@ export const analyzeVision = async (data: ScreeningData) => {
           }
         }
       }
-    });
+    })
+  );
 
     const text = response.text;
     if (!text) {
@@ -313,18 +368,20 @@ export const analyzeVision = async (data: ScreeningData) => {
 export const chatWithOpticalAI = async (message: string, image?: string) => {
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-3-flash-preview";
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { text: `You are a specialized Optical and Eye Health Assistant. 
-                 Answer the user's question accurately. 
-                 If the user asks in a specific language, answer in that same language.
-                 User Question: ${message}` },
-        ...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image.split(',')[1] } }] : [])
-      ]
-    }
+  const responseText = await executeWithRetryAndFallback(ai, async (currentModel) => {
+    const response = await ai.models.generateContent({
+      model: currentModel,
+      contents: {
+        parts: [
+          { text: `You are a specialized Optical and Eye Health Assistant. 
+                   Answer the user's question accurately. 
+                   If the user asks in a specific language, answer in that same language.
+                   User Question: ${message}` },
+          ...(image ? [{ inlineData: { mimeType: "image/jpeg", data: image.split(',')[1] } }] : [])
+        ]
+      }
+    });
+    return response.text;
   });
-  return response.text;
+  return responseText;
 };
